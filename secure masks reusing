@@ -1,0 +1,178 @@
+# -*- coding: utf-8 -*-
+import random
+import gmpy2
+from gmpy2 import mpz
+import time
+import numpy as np
+import hashlib
+
+
+def buildsharing(t,n,secret,PP):
+    s = mpz(secret)
+    listx = [[mpz(0)] * (t-1) for _ in range(n)]
+    for i in range(t-1):
+        random_state = gmpy2.random_state(int(time.time()*100000))
+        a1 = gmpy2.mpz_random(random_state,PP)
+        for x in range(n):
+            listx[x][i] = a1 
+    
+    listx2 = [[mpz(0)] * (t-1) for _ in range(n)]    
+
+    for i in range(t-1):
+        for j in range(n):
+           
+            listx2[j][i] = listx[j][i] * pow((j+1),(i+1)) 
+    listx3 = np.array(listx2)
+    
+    sum1 = listx3.sum(axis=1)
+    
+    sum2 = []
+    
+    for i in range(n):
+        sum2.append(gmpy2.f_mod((sum1[i] + s), PP))
+    return sum2
+    
+    
+
+
+def reconsecret(x,y,a,PP):
+    ans = mpz(0) 
+    for i in range(len(y)):
+        temp = mpz(1)
+        for j in range(len(y)):
+            if i !=j:
+                L= (a-x[j]) * gmpy2.invert((x[i]-x[j]),PP)
+                temp = gmpy2.mul(temp, L)
+        ans += gmpy2.mul(y[i], temp)
+    ans2 = gmpy2.f_mod(ans,PP) 
+    return ans2
+
+def buildinput(list_input,t):
+    X_input = []
+    Y_input = []
+    for i in range(t):
+        X_input.append(mpz(i+1))
+        
+    for i in range(t):
+        Y_input.append(list_input[i])
+    return X_input,Y_input
+
+def get_hash256(data:str):
+    hash256 = hashlib.sha256()
+    hash256.update(data.encode('utf-8'))
+    return hash_t        
+        
+if __name__ == "__main__":
+    PP = 40053677
+    #PP = 91892335796221248413
+    n = 100
+    t = int(n/2+1)
+    secret_s = []
+    secret_r = []
+    for i in range(n):
+        secret_s.append(random.randint(1,5))
+        secret_r.append(random.randint(1,5))
+    
+    
+    list_data = []
+    for i in range(n):
+        list_data.append(random.randint(1,50))
+     
+    list_temp_date = np.array(list_data)
+    sum_data_test = list_temp_date.sum(axis=0)
+    
+  
+    ######################################
+    ##           share loacl s          ## 
+    ## ---------------------------------##
+    print("########## step1 start ##########")
+    list_parties_shares=[]                                 ##s
+    list_parties_sharer=[]                                 ##r
+    start = time.perf_counter()
+    
+    
+    
+    for i in range(n):
+       list_parties_shares.append(buildsharing(t,n,secret_s[i],PP))
+       list_parties_sharer.append(buildsharing(t,n,secret_r[i],PP))
+    stop = time.perf_counter()
+    print("sharingtime:", (stop - start) * 1000,"ms")
+    
+    
+  
+    list_temps = np.array(list_parties_shares)
+    list_parties_shares = list_temps.sum(axis=0)
+    
+    list_tempr = np.array(list_parties_sharer)
+    list_parties_sharer = list_tempr.sum(axis=0)
+    #-------------seed---------------#
+    X_input_r = []
+    Y_input_r = []
+    X_input_r,Y_input_r = buildinput(list_parties_sharer,t)
+    seed = reconsecret(X_input_r,Y_input_r,0,PP)
+
+    #-------------hash---------------#
+    hash_temp = int.from_bytes(hashlib.sha256(str([seed,1]).encode('utf-8')).digest(), 'big')
+    hash_t = hash_temp % PP
+    
+    #-------reconsecret s------------#
+    X_input_s = []
+    Y_input_s = []
+    for i in range(t):
+        X_input_s.append(mpz(i+1))
+        Y_input_s.append(list_parties_shares[i]*hash_t)
+    
+    sum_secret_s = reconsecret(X_input_s,Y_input_s,0,PP)
+
+     
+    list_temp2 = np.array(secret_s,dtype=np.float64)
+    sum_secret_test = list_temp2.sum(axis=0)
+    
+    
+    if sum_secret_s == sum_secret_test*hash_t%PP:
+        print("reconstruct random number successfully")
+        
+    #-------reconsecret s2------------#
+    secret2 = []
+    for i in range(n):
+        secret2.append(mpz(random.randint(1,5)))
+   
+    list_coff = []
+    #-------------coff----------------#
+    for i in range(t):
+        coff_temp = mpz(1)
+        for j in range(t):
+            if i !=j:
+                L= (0-X_input_s[j]) * gmpy2.invert((X_input_s[i]-X_input_s[j]),PP)
+                coff_temp = gmpy2.mul(coff_temp, L)
+        list_coff.append(coff_temp)
+
+    X_input2 = []
+    Y_input2 = []
+    for i in range(t):
+        X_input2.append(mpz(i+1))
+        Y_input2.append(secret2[i] + list_parties_shares[i]*hash_t)
+    
+    sum_secret2 = reconsecret(X_input2,Y_input2,0,PP)
+    
+    X_input_sever = []
+    
+    for i in range(t):
+        X_input_sever.append(secret2[i]*list_coff[i])
+    for i in range(n):
+        X_input_sever.append(list_data[i] + secret_s[i]*hash_t)
+    
+    list_allnp111 = np.array(X_input_sever)
+    sum_all2 = list_allnp111.sum(axis=0)
+    X_input_sever2 = gmpy2.f_mod(sum_all2,PP) 
+    
+    
+    if sum_data_test == (int(X_input_sever2) - int(sum_secret2)):
+        print("reconstruct secret successfully")
+    
+    
+
+    ######################################
+
+    
+    
