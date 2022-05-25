@@ -7,7 +7,7 @@ import numpy as np
 import hashlib
 
 
-def buildsharing(t,n,secret,PP):
+def buildsharing(t,n,secret,PP):  # generating a random degree - t − 1 polynomial and calculating secret shares (i,f(i))
     s = mpz(secret)
     listx = [[mpz(0)] * (t-1) for _ in range(n)]
     for i in range(t-1):
@@ -35,7 +35,7 @@ def buildsharing(t,n,secret,PP):
     
 
 
-def reconsecret(x,y,a,PP):
+def reconsecret(x,y,a,PP): # generating a reconstruction polynomial and calculating the secret 
     ans = mpz(0) 
     for i in range(len(y)):
         temp = mpz(1)
@@ -47,7 +47,7 @@ def reconsecret(x,y,a,PP):
     ans2 = gmpy2.f_mod(ans,PP) 
     return ans2
 
-def buildinput(list_input,t):
+def buildinput(list_input,t): # building the input of reconstruction polynomial
     X_input = []
     Y_input = []
     for i in range(t):
@@ -57,90 +57,90 @@ def buildinput(list_input,t):
         Y_input.append(list_input[i])
     return X_input,Y_input
 
-def get_hash256(data:str):
+def get_hash256(data:str): # secure hash function
     hash256 = hashlib.sha256()
     hash256.update(data.encode('utf-8'))
     return hash_t        
         
 if __name__ == "__main__":
-    PP = 40053677
+    PP = 40053677                                    # modulus p
     #PP = 91892335796221248413
-    n = 100
+    n = 100                                          # the number of participants n
     t = int(n/2+1)
     secret_s = []
     secret_r = []
     for i in range(n):
-        secret_s.append(random.randint(1,5))
-        secret_r.append(random.randint(1,5))
+        secret_s.append(random.randint(1,5))         # mask si
+        secret_r.append(random.randint(1,5))         # random number ri about seed generation
     
     
     list_data = []
     for i in range(n):
-        list_data.append(random.randint(1,50))
+        list_data.append(random.randint(1,50))       # validation data  
      
     list_temp_date = np.array(list_data)
-    sum_data_test = list_temp_date.sum(axis=0)
+    sum_data_test = list_temp_date.sum(axis=0)       # aggregation results of validate data
     
   
     ######################################
     ##           share loacl s          ## 
     ## ---------------------------------##
     print("########## step1 start ##########")
-    list_parties_shares=[]                                 ##s
-    list_parties_sharer=[]                                 ##r
+    list_parties_shares=[]                                 
+    list_parties_sharer=[]                                 
     start = time.perf_counter()
     
     
     
     for i in range(n):
-       list_parties_shares.append(buildsharing(t,n,secret_s[i],PP))
-       list_parties_sharer.append(buildsharing(t,n,secret_r[i],PP))
+       list_parties_shares.append(buildsharing(t,n,secret_s[i],PP))         # building sub secret of mask s 
+       list_parties_sharer.append(buildsharing(t,n,secret_r[i],PP))         # building sub secret of r 
     stop = time.perf_counter()
     print("sharingtime:", (stop - start) * 1000,"ms")
     
     
   
-    list_temps = np.array(list_parties_shares)
-    list_parties_shares = list_temps.sum(axis=0)
+    list_temps = np.array(list_parties_shares)                
+    list_parties_shares = list_temps.sum(axis=0)                            # calculating the aggregation result of sub secret about s
     
     list_tempr = np.array(list_parties_sharer)
-    list_parties_sharer = list_tempr.sum(axis=0)
+    list_parties_sharer = list_tempr.sum(axis=0)                            # calculating the aggregation result of sub secret about r
     #-------------seed---------------#
     X_input_r = []
     Y_input_r = []
     X_input_r,Y_input_r = buildinput(list_parties_sharer,t)
-    seed = reconsecret(X_input_r,Y_input_r,0,PP)
+    seed = reconsecret(X_input_r,Y_input_r,0,PP)                            # generating a seed of the dynamic coefficient generator
 
     #-------------hash---------------#
     hash_temp = int.from_bytes(hashlib.sha256(str([seed,1]).encode('utf-8')).digest(), 'big')
-    hash_t = hash_temp % PP
+    hash_t = hash_temp % PP                                                 # generating secure coefficient 
     
-    #-------reconsecret s------------#
+    #------- Basic scheme------------#
     X_input_s = []
     Y_input_s = []
     for i in range(t):
         X_input_s.append(mpz(i+1))
         Y_input_s.append(list_parties_shares[i]*hash_t)
     
-    sum_secret_s = reconsecret(X_input_s,Y_input_s,0,PP)
+    sum_secret_s = reconsecret(X_input_s,Y_input_s,0,PP)                   # reconstructing the aggregation result of masks
 
      
     list_temp2 = np.array(secret_s,dtype=np.float64)
     sum_secret_test = list_temp2.sum(axis=0)
     
     
-    if sum_secret_s == sum_secret_test*hash_t%PP:
+    if sum_secret_s == sum_secret_test*hash_t%PP:                          # verifying the basic scheme 
         print("reconstruct random number successfully")
         
-    #-------reconsecret s2------------#
+    #-------against collusion scheme------------#
     secret2 = []
     for i in range(n):
-        secret2.append(mpz(random.randint(1,5)))
+        secret2.append(mpz(random.randint(1,5)))                           # validation data  
    
     list_coff = []
-    #-------------coff----------------#
-    for i in range(t):
-        coff_temp = mpz(1)
+    #-------------primary function--------------#                            
+    for i in range(t):                                                     # generating primary function delta
+        coff_temp = mpz(1)    
         for j in range(t):
             if i !=j:
                 L= (0-X_input_s[j]) * gmpy2.invert((X_input_s[i]-X_input_s[j]),PP)
@@ -149,11 +149,11 @@ if __name__ == "__main__":
 
     X_input2 = []
     Y_input2 = []
-    for i in range(t):
+    for i in range(t):                                                    # double masking
         X_input2.append(mpz(i+1))
-        Y_input2.append(secret2[i] + list_parties_shares[i]*hash_t)
+        Y_input2.append(secret2[i] + list_parties_shares[i]*hash_t)      
     
-    sum_secret2 = reconsecret(X_input2,Y_input2,0,PP)
+    sum_secret2 = reconsecret(X_input2,Y_input2,0,PP)                     # reconstructing the aggregation result of masks
     
     X_input_sever = []
     
@@ -162,12 +162,12 @@ if __name__ == "__main__":
     for i in range(n):
         X_input_sever.append(list_data[i] + secret_s[i]*hash_t)
     
-    list_allnp111 = np.array(X_input_sever)
+    list_allnp111 = np.array(X_input_sever)                               # aggregation results of validate data
     sum_all2 = list_allnp111.sum(axis=0)
-    X_input_sever2 = gmpy2.f_mod(sum_all2,PP) 
+    X_input_sever2 = gmpy2.f_mod(sum_all2,PP)                            
     
     
-    if sum_data_test == (int(X_input_sever2) - int(sum_secret2)):
+    if sum_data_test == (int(X_input_sever2) - int(sum_secret2)):         # verifying the against collusion scheme 
         print("reconstruct secret successfully")
     
     
