@@ -1,1 +1,1 @@
-# 安全掩码复用协议
+# Secure masks reusing
